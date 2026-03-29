@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecting to study…</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 80px auto;
+           padding: 0 20px; color: #333; }
+    .error { color: #c00; border: 1px solid #c00; padding: 16px;
+             border-radius: 4px; background: #fff0f0; }
+  </style>
+</head>
+<body>
+<p id="msg">Preparing your survey, please wait…</p>
+
+<script>
+// ── Configuration ────────────────────────────────────────────────────────────
+// Survey URL (Formbricks link survey)
+const SURVEY_BASE   = "https://app.formbricks.com/s/cmncaq593gcq6rq01qbxmlxbg";
+const SURVEY_VERSION = "repair_v2";
+
+// Cell definitions — 4-cell 2×2 design (Order × Condition)
+const CELLS = [
+  { cell:"AB_T", order:"AB", condition:"T", first_claim:"A", second_claim:"B" },
+  { cell:"AB_C", order:"AB", condition:"C", first_claim:"A", second_claim:"B" },
+  { cell:"BA_T", order:"BA", condition:"T", first_claim:"B", second_claim:"A" },
+  { cell:"BA_C", order:"BA", condition:"C", first_claim:"B", second_claim:"A" },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Deterministic 32-bit hash of a string (djb2-style). */
+function hashStr(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) ^ s.charCodeAt(i);
+    h = h >>> 0;   // keep unsigned
+  }
+  return h;
+}
+
+/** Assign cell index (0–3) from PID using hash. */
+function assignCell(pid) {
+  return hashStr(pid) % CELLS.length;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const pid    = (params.get("PROLIFIC_PID") || "").trim();
+
+  // FAIL-HARD: no PID → show error, do not redirect
+  if (!pid) {
+    document.getElementById("msg").outerHTML =
+      '<div class="error">' +
+      '<strong>Error: participant ID missing.</strong><br>' +
+      'This survey must be accessed through Prolific. ' +
+      'Please return to Prolific and click the study link again. ' +
+      'If this error persists, contact y.liao.1@bham.ac.uk.' +
+      '</div>';
+    return;
+  }
+
+  // Assign cell
+  const cellDef = CELLS[assignCell(pid)];
+
+  // Build redirect URL
+  const dest = new URL(SURVEY_BASE);
+  dest.searchParams.set("PROLIFIC_PID",   pid);
+  dest.searchParams.set("cell",           cellDef.cell);
+  dest.searchParams.set("order",          cellDef.order);
+  dest.searchParams.set("condition",      cellDef.condition);
+  dest.searchParams.set("first_claim",    cellDef.first_claim);
+  dest.searchParams.set("second_claim",   cellDef.second_claim);
+  dest.searchParams.set("survey_version", SURVEY_VERSION);
+
+  window.location.replace(dest.toString());
+})();
+</script>
+</body>
+</html>
