@@ -15,9 +15,9 @@
 <p id="msg">Preparing your survey, please wait…</p>
 
 <script>
-// ── Configuration ────────────────────────────────────────────────────────────
+// ── Configuration ─────────────────────────────────────────────────────────────
 // Survey URL (Formbricks link survey)
-const SURVEY_BASE   = "https://app.formbricks.com/s/cmncaq593gcq6rq01qbxmlxbg";
+const SURVEY_BASE    = "https://app.formbricks.com/s/cmncaq593gcq6rq01qbxmlxbg";
 const SURVEY_VERSION = "repair_v2";
 
 // Cell definitions — 4-cell 2×2 design (Order × Condition)
@@ -28,26 +28,27 @@ const CELLS = [
   { cell:"BA_C", order:"BA", condition:"C", first_claim:"B", second_claim:"A" },
 ];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Cell assignment via SHA-256 ───────────────────────────────────────────────
+//
+// Previous version used djb2 (hashStr % 4).  djb2 mod 4 reduces to a simple
+// XOR of the low 2 bits of every character code — a structural weakness that
+// caused severe cell imbalance (8/1/2/9 across 20 Prolific PIDs in pilot 1).
+//
+// Fix: SHA-256 via the Web Crypto API (available in all modern browsers).
+// We take the first 4 bytes of the digest as a big-endian uint32 and mod 4.
+// SHA-256 has no known mod-4 bias for hex-string inputs.
 
-/** Deterministic 32-bit hash of a string (djb2-style). */
-function hashStr(s) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h) ^ s.charCodeAt(i);
-    h = h >>> 0;   // keep unsigned
-  }
-  return h;
+async function assignCell(pid) {
+  const data   = new TextEncoder().encode(pid);
+  const buf    = await crypto.subtle.digest("SHA-256", data);
+  const view   = new DataView(buf);
+  const h      = view.getUint32(0, false);   // first 4 bytes, big-endian
+  return h % CELLS.length;
 }
 
-/** Assign cell index (0–3) from PID using hash. */
-function assignCell(pid) {
-  return hashStr(pid) % CELLS.length;
-}
+// ── Main ──────────────────────────────────────────────────────────────────────
 
-// ── Main ─────────────────────────────────────────────────────────────────────
-
-(function () {
+(async function () {
   const params = new URLSearchParams(window.location.search);
   const pid    = (params.get("PROLIFIC_PID") || "").trim();
 
@@ -63,8 +64,9 @@ function assignCell(pid) {
     return;
   }
 
-  // Assign cell
-  const cellDef = CELLS[assignCell(pid)];
+  // Assign cell (async — awaits SHA-256 digest)
+  const idx     = await assignCell(pid);
+  const cellDef = CELLS[idx];
 
   // Build redirect URL
   const dest = new URL(SURVEY_BASE);
